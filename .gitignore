@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+*.crt
+*.key
+server_logs.txt
