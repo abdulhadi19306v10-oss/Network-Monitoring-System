@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Monitoring Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+</head>
+<body>
+
+    <!-- Emergency Banner Overlay -->
+    <div id="emergency-banner" class="hidden">
+        <h1>🚨 EMERGENCY BROADCAST 🚨</h1>
+        <p id="emergency-msg">A critical network threshold has been breached!</p>
+        <button onclick="dismissEmergency()">Dismiss</button>
+    </div>
+
+    <div class="container">
+        <!-- Header / Connection Panel -->
+        <header class="glass-panel connection-panel">
+            <div class="brand">
+                <h2>NetworkOps <span>Nexus</span></h2>
+            </div>
+            <div class="conn-controls">
+                <input type="text" id="inp-host" value="127.0.0.1" placeholder="Server IP">
+                <input type="number" id="inp-port" value="9500" placeholder="Port">
+                <input type="text" id="inp-user" placeholder="Username">
+                <label>
+                    <input type="checkbox" id="chk-ssl"> Use SSL
+                </label>
+                <button id="btn-connect" class="btn primary" onclick="toggleConnection()">Connect</button>
+                <span id="conn-status" class="status-badge offline">Disconnected</span>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <main class="grid-layout">
+            
+            <!-- Left Column -->
+            <div class="col-left">
+                <!-- Metrics Widget -->
+                <section class="glass-panel widget metrics-widget">
+                    <h3>Real-time Metrics <span class="pulse-indicator"></span></h3>
+                    <div class="metric">
+                        <div class="metric-header">
+                            <span>CPU Usage</span>
+                            <span id="val-cpu">0.0%</span>
+                        </div>
+                        <div class="progress-bar"><div id="bar-cpu" class="progress-fill fill-blue"></div></div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-header">
+                            <span>Bandwidth</span>
+                            <span id="val-bw">0 Mbps</span>
+                        </div>
+                        <div class="progress-bar"><div id="bar-bw" class="progress-fill fill-green"></div></div>
+                    </div>
+                    <button class="btn danger full-width mt-10" onclick="triggerEmergency()">Trigger Global Emergency</button>
+                </section>
+
+                <!-- Active Nodes Widget -->
+                <section class="glass-panel widget nodes-widget">
+                    <h3>Active Nodes</h3>
+                    <ul id="list-nodes" class="node-list">
+                        <!-- Nodes populated here -->
+                    </ul>
+                </section>
+            </div>
+
+            <!-- Middle Column -->
+            <div class="col-middle">
+                <!-- Group Rooms Chat -->
+                <section class="glass-panel widget chat-widget">
+                    <h3>Group Alert Rooms</h3>
+                    <div class="room-selector">
+                        <label><input type="checkbox" onchange="toggleRoom('CPU', this.checked)"> CPU</label>
+                        <label><input type="checkbox" onchange="toggleRoom('Bandwidth', this.checked)"> Bandwidth</label>
+                        <label><input type="checkbox" onchange="toggleRoom('Security', this.checked)"> Security</label>
+                    </div>
+                    
+                    <div id="box-rooms" class="chat-box"></div>
+                    
+                    <div class="chat-input-area">
+                        <select id="sel-room">
+                            <option value="CPU">CPU</option>
+                            <option value="Bandwidth">Bandwidth</option>
+                            <option value="Security">Security</option>
+                        </select>
+                        <input type="text" id="inp-room-msg" placeholder="Type a message..." onkeypress="handleEnter(event, sendRoomMsg)">
+                        <button class="btn action" onclick="sendRoomMsg()">Send</button>
+                    </div>
+                </section>
+
+                <!-- Private Chat -->
+                <section class="glass-panel widget chat-widget">
+                    <h3>Private Communications</h3>
+                    <div id="box-private" class="chat-box"></div>
+                    <div class="chat-input-area">
+                        <select id="sel-private">
+                            <!-- Populated from active nodes -->
+                        </select>
+                        <input type="text" id="inp-private-msg" placeholder="Type a direct message..." onkeypress="handleEnter(event, sendPrivateMsg)">
+                        <button class="btn action" onclick="sendPrivateMsg()">Send</button>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column -->
+            <div class="col-right">
+                <!-- System Events Log -->
+                <section class="glass-panel widget logs-widget">
+                    <h3>System Events</h3>
+                    <div id="box-events" class="chat-box terminal"></div>
+                </section>
+
+                <!-- File Sharing -->
+                <section class="glass-panel widget files-widget">
+                    <h3>Shared Files</h3>
+                    <div class="file-upload-area">
+                        <input type="file" id="inp-file" style="display:none" onchange="uploadFile()">
+                        <button class="btn outline full-width" onclick="document.getElementById('inp-file').click()">Upload File...</button>
+                    </div>
+                    <ul id="list-files" class="file-list">
+                        <!-- Files populated here -->
+                    </ul>
+                </section>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
