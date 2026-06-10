@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Network Monitoring Dashboard</title>
+    <title>Network Nexus</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -21,7 +22,7 @@
         <!-- Header / Connection Panel -->
         <header class="glass-panel connection-panel">
             <div class="brand">
-                <h2>NetworkOps <span>Nexus</span></h2>
+                <h2>Network <span>Nexus</span></h2>
             </div>
             <div class="conn-controls">
                 <input type="text" id="inp-host" value="127.0.0.1" placeholder="Server IP">
@@ -31,6 +32,7 @@
                     <input type="checkbox" id="chk-ssl"> Use SSL
                 </label>
                 <button id="btn-connect" class="btn primary" onclick="toggleConnection()">Connect</button>
+                <button id="btn-simulate" class="btn simulation" onclick="toggleSimulation()" style="display:none">Simulate Concurrency</button>
                 <span id="conn-status" class="status-badge offline">Disconnected</span>
             </div>
         </header>
@@ -43,19 +45,12 @@
                 <!-- Metrics Widget -->
                 <section class="glass-panel widget metrics-widget">
                     <h3>Real-time Metrics <span class="pulse-indicator"></span></h3>
-                    <div class="metric">
-                        <div class="metric-header">
-                            <span>CPU Usage</span>
-                            <span id="val-cpu">0.0%</span>
-                        </div>
-                        <div class="progress-bar"><div id="bar-cpu" class="progress-fill fill-blue"></div></div>
+                    <div style="display: flex; justify-content: space-around; margin-bottom: 5px; font-size: 14px;">
+                        <div>CPU: <strong id="val-cpu" style="color:var(--accent-blue)">0.0%</strong></div>
+                        <div>Bandwidth: <strong id="val-bw" style="color:var(--accent-green)">0 Mbps</strong></div>
                     </div>
-                    <div class="metric">
-                        <div class="metric-header">
-                            <span>Bandwidth</span>
-                            <span id="val-bw">0 Mbps</span>
-                        </div>
-                        <div class="progress-bar"><div id="bar-bw" class="progress-fill fill-green"></div></div>
+                    <div class="chart-container">
+                        <canvas id="metricsChart"></canvas>
                     </div>
                     <button class="btn danger full-width mt-10" onclick="triggerEmergency()">Trigger Global Emergency</button>
                 </section>
@@ -129,6 +124,19 @@
             </div>
 
         </main>
+    </div>
+
+    <!-- File Preview Modal -->
+    <div id="preview-modal" class="modal-overlay hidden" onclick="closePreviewModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="preview-title">File Preview</h3>
+                <button class="modal-close-btn" onclick="closePreviewModal()">&times;</button>
+            </div>
+            <div id="preview-body" class="modal-body">
+                <!-- Preview content injected here -->
+            </div>
+        </div>
     </div>
 
     <script src="script.js"></script>
