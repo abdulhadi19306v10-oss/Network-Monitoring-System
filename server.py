@@ -311,6 +311,16 @@ class Server:
             "Server listening on %s:%d (SSL=%s)", self.host, self.port, self.use_ssl
         )
 
+        # Start Server Dashboard Web Interface on Port 9600
+        self.dashboard_port = 9600
+        self.logger.info("Starting Server Dashboard web interface on http://localhost:%d...", self.dashboard_port)
+        t_dash = threading.Thread(
+            target=run_flask_dashboard,
+            args=(self, self.dashboard_port),
+            daemon=True
+        )
+        t_dash.start()
+
         try:
             while self.running:
                 try:
@@ -692,6 +702,556 @@ class Server:
             except OSError:
                 pass
             self._broadcast_client_list()
+
+
+# ---------------------------------------------------------------------------
+# Server Dashboard Flask Web Service
+# ---------------------------------------------------------------------------
+
+DASHBOARD_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Nexus Server Console</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --accent-teal: #00f2fe;
+            --accent-cyan: #4facfe;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --alert-red: #ef4444;
+            --alert-green: #10b981;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at top right, #1e1b4b, var(--bg-color) 80%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            backdrop-filter: blur(12px);
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            padding: 1.5rem 2rem;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+        .header-title h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-teal), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        .header-title p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        .server-badge {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--alert-green);
+            color: var(--alert-green);
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--alert-green);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            backdrop-filter: blur(12px);
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            padding: 1.5rem;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+        }
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+        }
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: var(--text-primary);
+        }
+        .stat-value.teal {
+            color: var(--accent-teal);
+            text-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .panel {
+            backdrop-filter: blur(12px);
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+            margin-bottom: 2rem;
+        }
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+        .panel-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .panel-title svg {
+            color: var(--accent-teal);
+        }
+        
+        .table-container {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+        th {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-size: 0.95rem;
+            color: var(--text-primary);
+        }
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .empty-row {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 2rem;
+        }
+        
+        .room-badge {
+            background: rgba(79, 172, 254, 0.15);
+            border: 1px solid var(--accent-cyan);
+            color: var(--text-primary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 4px;
+            display: inline-block;
+        }
+        .room-badge.CPU {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.5);
+        }
+        .room-badge.Bandwidth {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: rgba(16, 185, 129, 0.5);
+        }
+        .room-badge.Security {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.5);
+        }
+
+        .console-container {
+            background: #05070c;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            height: 350px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            color: #d1d5db;
+        }
+        .log-entry {
+            margin-bottom: 4px;
+        }
+        .log-entry.info { color: #38bdf8; }
+        .log-entry.warn { color: #f59e0b; }
+        .log-entry.error { color: #ef4444; }
+        
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 22px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #374151;
+            transition: .3s;
+            border-radius: 22px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--accent-teal);
+        }
+        input:checked + .slider:before {
+            transform: translateX(22px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-title">
+                <h1>Network Nexus</h1>
+                <p>Collaborative Server Operations & Status Console</p>
+            </div>
+            <div class="server-badge">
+                <span class="pulse-dot"></span>
+                <span>SERVER RUNNING</span>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span class="stat-label">Binding Address</span>
+                <span class="stat-value teal" id="server-host">-</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Listening Port</span>
+                <span class="stat-value teal" id="server-port">-</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Encryption Mode</span>
+                <span class="stat-value" id="server-ssl">-</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Connected Clients</span>
+                <span class="stat-value teal" id="client-count">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Shared Logs/Files</span>
+                <span class="stat-value teal" id="files-count">0</span>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                        Registered Client Nodes
+                    </span>
+                    <div class="toggle-container">
+                        <span>Auto Refresh</span>
+                        <label class="switch">
+                            <input type="checkbox" id="auto-refresh" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Hostname</th>
+                                <th>IP Address</th>
+                                <th>Active Alert Subscriptions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clients-tbody">
+                            <tr>
+                                <td colspan="4" class="empty-row">No active client nodes connected.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        Shared Incident Evidence
+                    </span>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Sender</th>
+                                <th>Size</th>
+                            </tr>
+                        </thead>
+                        <tbody id="files-tbody">
+                            <tr>
+                                <td colspan="3" class="empty-row">No files shared yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                    Live Console Log Stream
+                </span>
+            </div>
+            <div class="console-container" id="log-console">Loading server logs...</div>
+        </div>
+    </div>
+
+    <script>
+        const hostEl = document.getElementById('server-host');
+        const portEl = document.getElementById('server-port');
+        const sslEl = document.getElementById('server-ssl');
+        const countEl = document.getElementById('client-count');
+        const filesCountEl = document.getElementById('files-count');
+        const clientsTbody = document.getElementById('clients-tbody');
+        const filesTbody = document.getElementById('files-tbody');
+        const consoleEl = document.getElementById('log-console');
+        const autoRefreshEl = document.getElementById('auto-refresh');
+
+        let intervalId = null;
+
+        async function updateStatus() {
+            try {
+                const res = await fetch('/api/status');
+                if (!res.ok) throw new Error('API server unreachable');
+                const data = await res.json();
+                
+                // Set metadata
+                hostEl.textContent = data.host;
+                portEl.textContent = data.port;
+                sslEl.textContent = data.use_ssl ? 'TLS/SSL (Encrypted)' : 'Plaintext (Unencrypted)';
+                sslEl.style.color = data.use_ssl ? 'var(--alert-green)' : 'var(--text-secondary)';
+                
+                // Set counts
+                countEl.textContent = data.clients.length;
+                filesCountEl.textContent = data.shared_files.length;
+                
+                // Render clients
+                if (data.clients.length === 0) {
+                    clientsTbody.innerHTML = '<tr><td colspan="4" class="empty-row">No active client nodes connected.</td></tr>';
+                } else {
+                    clientsTbody.innerHTML = data.clients.map(c => `
+                        <tr>
+                            <td style="font-weight: 600; color: var(--accent-teal);">\${escapeHtml(c.username)}</td>
+                            <td>\${escapeHtml(c.hostname)}</td>
+                            <td>\${escapeHtml(c.ip)}</td>
+                            <td>\${c.rooms.length === 0 ? '<span style="color: var(--text-secondary);">None</span>' : c.rooms.map(r => \`<span class="room-badge \${r}">\${r}</span>\`).join('')}</td>
+                        </tr>
+                    `).join('');
+                }
+                
+                // Render files
+                if (data.shared_files.length === 0) {
+                    filesTbody.innerHTML = '<tr><td colspan="3" class="empty-row">No files shared yet.</td></tr>';
+                } else {
+                    filesTbody.innerHTML = data.shared_files.map(f => `
+                        <tr>
+                            <td style="font-weight: 500; font-family: monospace;">\${escapeHtml(f.filename)}</td>
+                            <td>\${escapeHtml(f.username)}</td>
+                            <td style="color: var(--text-secondary);">\${formatBytes(f.file_size)}</td>
+                        </tr>
+                    `).join('');
+                }
+                
+                // Render logs
+                const wasScrolledToBottom = consoleEl.scrollHeight - consoleEl.clientHeight <= consoleEl.scrollTop + 50;
+                
+                consoleEl.innerHTML = data.logs.map(log => {
+                    let logClass = 'info';
+                    if (log.includes('[WARNING]')) logClass = 'warn';
+                    if (log.includes('[ERROR]') || log.includes('[!]')) logClass = 'error';
+                    return \`<div class="log-entry \${logClass}">\${escapeHtml(log)}</div>\`;
+                }).join('');
+                
+                if (wasScrolledToBottom) {
+                    consoleEl.scrollTop = consoleEl.scrollHeight;
+                }
+            } catch (err) {
+                console.error(err);
+                consoleEl.innerHTML = \`<div class="log-entry error">[Console Error] Failed to update server status: \${err.message}</div>\`;
+            }
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        function setupAutoRefresh() {
+            if (autoRefreshEl.checked) {
+                updateStatus();
+                intervalId = setInterval(updateStatus, 2000);
+            } else {
+                if (intervalId) clearInterval(intervalId);
+            }
+        }
+
+        autoRefreshEl.addEventListener('change', setupAutoRefresh);
+        
+        // Initial setup
+        updateStatus();
+        intervalId = setInterval(updateStatus, 2000);
+    </script>
+</body>
+</html>
+"""
+
+def run_flask_dashboard(server_instance, port):
+    """Starts the Flask web console on a daemon thread."""
+    from flask import Flask, jsonify, render_template_string
+    import logging
+    
+    app = Flask("server_dashboard")
+    
+    # Silence Flask console messages to avoid polluting terminal logs
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+
+    @app.route("/")
+    def index():
+        return render_template_string(DASHBOARD_HTML_TEMPLATE)
+
+    @app.route("/api/status")
+    def status():
+        clients_data = []
+        with server_instance.clients_lock:
+            for name, c_info in server_instance.clients.items():
+                clients_data.append(c_info.to_dict())
+
+        with server_instance.files_lock:
+            files_data = list(server_instance.shared_files)
+
+        log_file_path = os.path.join(CERT_DIR, "server_logs.txt")
+        logs = []
+        if os.path.exists(log_file_path):
+            try:
+                with open(log_file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    logs = [line.strip() for line in lines[-50:]]
+            except Exception as e:
+                logs = [f"Failed to read server logs: {e}"]
+        else:
+            logs = ["Log file does not exist yet."]
+
+        return jsonify({
+            "host": server_instance.host,
+            "port": server_instance.port,
+            "use_ssl": server_instance.use_ssl,
+            "clients": clients_data,
+            "shared_files": files_data,
+            "logs": logs
+        })
+
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
 
 
 # ---------------------------------------------------------------------------
