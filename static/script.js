@@ -4,6 +4,71 @@ const socket = io();
 let connected = false;
 let myUsername = "";
 
+// Initialize Chart.js
+const chartCtx = document.getElementById('metricsChart').getContext('2d');
+const metricsChart = new Chart(chartCtx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            {
+                label: 'CPU (%)',
+                data: [],
+                borderColor: '#38bdf8',
+                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3
+            },
+            {
+                label: 'Bandwidth (Mbps)',
+                data: [],
+                borderColor: '#34d399',
+                backgroundColor: 'rgba(52, 211, 153, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            x: {
+                grid: { display: false },
+                ticks: { color: '#94a3b8', maxTicksLimit: 8 }
+            },
+            y: {
+                beginAtZero: true,
+                ticks: { color: '#94a3b8' }
+            }
+        },
+        plugins: {
+            legend: {
+                labels: { color: '#f8fafc', font: { family: 'Outfit' } }
+            }
+        }
+    }
+});
+
+function updateChart(cpu, bandwidth) {
+    const maxDataPoints = 15;
+    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    
+    metricsChart.data.labels.push(timeString);
+    metricsChart.data.datasets[0].data.push(cpu);
+    metricsChart.data.datasets[1].data.push(bandwidth);
+    
+    if (metricsChart.data.labels.length > maxDataPoints) {
+        metricsChart.data.labels.shift();
+        metricsChart.data.datasets[0].data.shift();
+        metricsChart.data.datasets[1].data.shift();
+    }
+    
+    metricsChart.update();
+}
+
 // Generate a random username on load
 document.getElementById('inp-user').value = "User_" + Math.floor(Math.random() * 1000);
 
@@ -39,6 +104,9 @@ socket.on('bridge_connected', (data) => {
     badge.innerText = "Connected";
     badge.className = "status-badge online";
     
+    // Show simulation button
+    document.getElementById('btn-simulate').style.display = "inline-block";
+    
     logEvent("System", `Successfully bridged to server at ${data.host}:${data.port}`);
 });
 
@@ -53,6 +121,13 @@ socket.on('bridge_disconnected', (data) => {
     const badge = document.getElementById('conn-status');
     badge.innerText = "Disconnected";
     badge.className = "status-badge offline";
+    
+    // Hide and reset simulation button
+    const btnSim = document.getElementById('btn-simulate');
+    btnSim.style.display = "none";
+    btnSim.innerText = "Simulate Concurrency";
+    btnSim.className = "btn simulation";
+    simulationRunning = false;
     
     document.getElementById('list-nodes').innerHTML = "";
     document.getElementById('sel-private').innerHTML = "";
@@ -83,12 +158,9 @@ socket.on('client_list', (data) => {
 socket.on('metrics_update', (data) => {
     // Only update our own dashboard metrics from local simulation
     document.getElementById('val-cpu').innerText = data.cpu.toFixed(1) + "%";
-    document.getElementById('bar-cpu').style.width = data.cpu + "%";
-    if(data.cpu > 90) document.getElementById('bar-cpu').style.background = "var(--accent-red)";
-    else document.getElementById('bar-cpu').style.background = "var(--accent-blue)";
-    
     document.getElementById('val-bw').innerText = data.bandwidth_mbps.toFixed(1) + " Mbps";
-    document.getElementById('bar-bw').style.width = (data.bandwidth_mbps / 10) + "%";
+    
+    updateChart(data.cpu, data.bandwidth_mbps);
 });
 
 socket.on('room_msg', (data) => {
@@ -123,6 +195,40 @@ socket.on('file_list', (data) => {
     });
 });
 
+function showPreview(filename, fileDataB64, fileType) {
+    const modal = document.getElementById('preview-modal');
+    const title = document.getElementById('preview-title');
+    const body = document.getElementById('preview-body');
+    
+    title.innerText = `File Preview: ${filename}`;
+    body.innerHTML = "";
+    
+    const isImage = fileType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(filename);
+    const isText = fileType.startsWith('text/') || /\.(txt|json|log|py|md|html|css|js)$/i.test(filename);
+    
+    if (isImage) {
+        const img = document.createElement('img');
+        img.src = `data:${fileType};base64,${fileDataB64}`;
+        body.appendChild(img);
+    } else if (isText) {
+        const pre = document.createElement('pre');
+        try {
+            pre.innerText = atob(fileDataB64);
+        } catch (e) {
+            pre.innerText = decodeURIComponent(escape(atob(fileDataB64)));
+        }
+        body.appendChild(pre);
+    } else {
+        body.innerHTML = `<p style="color:var(--text-secondary); text-align:center;">Binary file preview not supported.<br>The file has been saved to your downloads folder.</p>`;
+    }
+    
+    modal.classList.remove('hidden');
+}
+
+function closePreviewModal(event) {
+    document.getElementById('preview-modal').classList.add('hidden');
+}
+
 socket.on('file_receive', (data) => {
     logEvent("System", `File downloaded successfully: ${data.filename}`);
     
@@ -139,6 +245,9 @@ socket.on('file_receive', (data) => {
     link.href = window.URL.createObjectURL(blob);
     link.download = data.filename;
     link.click();
+    
+    // Show preview modal
+    showPreview(data.filename, data.file_data, data.file_type || 'application/octet-stream');
 });
 
 socket.on('emergency', (data) => {
@@ -259,3 +368,29 @@ function triggerEmergency() {
 function dismissEmergency() {
     document.getElementById('emergency-banner').className = "hidden";
 }
+
+// -----------------------------------------------------------------------------
+// Simulation Logic
+// -----------------------------------------------------------------------------
+let simulationRunning = false;
+
+function toggleSimulation() {
+    if (!connected) return;
+    if (simulationRunning) {
+        socket.emit('simulate_concurrency', { action: 'stop' });
+    } else {
+        socket.emit('simulate_concurrency', { action: 'start' });
+    }
+}
+
+socket.on('simulation_state', (data) => {
+    simulationRunning = data.running;
+    const btn = document.getElementById('btn-simulate');
+    if (simulationRunning) {
+        btn.innerText = "Stop Simulation";
+        btn.className = "btn simulation running";
+    } else {
+        btn.innerText = "Simulate Concurrency";
+        btn.className = "btn simulation";
+    }
+});

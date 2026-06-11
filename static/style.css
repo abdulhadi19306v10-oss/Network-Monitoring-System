@@ -1,8 +1,8 @@
 /* Modern Glassmorphic Deep Space Theme */
 :root {
-    --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-    --glass-bg: rgba(255, 255, 255, 0.05);
-    --glass-border: rgba(255, 255, 255, 0.1);
+    --bg-gradient: linear-gradient(135deg, #090b11 0%, #111124 100%);
+    --glass-bg: rgba(15, 22, 42, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.08);
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --accent-blue: #38bdf8;
@@ -19,14 +19,14 @@
 
 body {
     font-family: 'Outfit', sans-serif;
-    background: var(--bg-gradient);
+    background-color: #070913;
+    background-image: 
+        radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 85% 30%, rgba(192, 132, 252, 0.08) 0%, transparent 50%),
+        var(--bg-gradient);
     color: var(--text-primary);
     min-height: 100vh;
     overflow-x: hidden;
-    /* Subtle background glow effect */
-    background-image: 
-        radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.15) 0%, transparent 50%),
-        radial-gradient(circle at 85% 30%, rgba(192, 132, 252, 0.15) 0%, transparent 50%);
 }
 
 .container {
@@ -222,7 +222,8 @@ input[type="text"]:focus, select:focus {
 .chat-widget { flex-grow: 1; min-height: 250px; }
 .chat-box {
     flex-grow: 1;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 8px;
     padding: 10px;
     overflow-y: auto;
@@ -240,7 +241,8 @@ input[type="text"]:focus, select:focus {
 
 .chat-msg {
     padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.02);
     border-radius: 8px;
     font-size: 14px;
     animation: fadeIn 0.3s ease;
@@ -270,7 +272,8 @@ input[type="text"]:focus, select:focus {
 
 .node-list li, .file-list li {
     padding: 10px;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.03);
     border-radius: 8px;
     font-size: 14px;
     display: flex;
@@ -326,3 +329,121 @@ input[type="text"]:focus, select:focus {
 
 /* Audio object hidden */
 .audio-player { display: none; }
+
+/* Chart Container */
+.chart-container {
+    position: relative;
+    width: 100%;
+    height: 180px;
+    margin-top: 15px;
+}
+
+/* Modal Overlay */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    transition: opacity 0.3s ease;
+}
+
+.modal-overlay.hidden {
+    display: none;
+}
+
+/* Modal Content */
+.modal-content {
+    background: rgba(30, 27, 75, 0.95);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    width: 90%;
+    max-width: 600px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--accent-blue);
+}
+
+.modal-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.modal-close-btn:hover {
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+    font-size: 14px;
+}
+
+.modal-body pre {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--accent-green);
+}
+
+.modal-body img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Simulation Button Styling */
+.btn.simulation {
+    background: rgba(56, 189, 248, 0.15);
+    border: 1px solid var(--accent-blue);
+    color: var(--accent-blue);
+    margin-left: 10px;
+}
+
+.btn.simulation:hover {
+    background: var(--accent-blue);
+    color: #000;
+}
+
+.btn.simulation.running {
+    background: rgba(251, 113, 133, 0.15);
+    border: 1px solid var(--accent-red);
+    color: var(--accent-red);
+}
+
+.btn.simulation.running:hover {
+    background: var(--accent-red);
+    color: #000;
+}

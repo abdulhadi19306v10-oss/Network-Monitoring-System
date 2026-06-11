@@ -14,25 +14,222 @@ Usage:
 
 import argparse
 import os
+import logging
+import shutil
 import socket
 import ssl
 import sys
 import threading
+import json
+import struct
+import subprocess
 from datetime import datetime
 
-from utils import (
-    DEFAULT_HOST,
-    DEFAULT_PORT,
-    ALERT_ROOMS,
-    CERT_DIR,
-    SERVER_CERT,
-    SERVER_KEY,
-    MsgType,
-    send_msg,
-    recv_msg,
-    make_error,
-    setup_logger,
-)
+# ---------------------------------------------------------------------------
+# Consolidated Shared Utilities & Constants (formerly utils.py)
+# ---------------------------------------------------------------------------
+
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 9500
+HEADER_SIZE = 4                 # 4-byte big-endian length prefix
+MAX_PAYLOAD_SIZE = 50 * 1024 * 1024   # 50 MB hard limit per message
+CHUNK_SIZE = 8192               # Read/write chunk size for socket I/O
+ENCODING = "utf-8"
+
+# Certificate file paths (relative to project root)
+CERT_DIR = os.path.dirname(os.path.abspath(__file__))
+SERVER_CERT = os.path.join(CERT_DIR, "server.crt")
+SERVER_KEY = os.path.join(CERT_DIR, "server.key")
+
+class MsgType:
+    CONNECT         = "connect"
+    CONNECT_ACK     = "connect_ack"
+    DISCONNECT      = "disconnect"
+    CLIENT_LIST     = "client_list"
+    STATUS_UPDATE   = "status_update"
+    JOIN_ROOM       = "join_room"
+    LEAVE_ROOM      = "leave_room"
+    ROOM_MSG        = "room_msg"
+    PRIVATE_MSG     = "private_msg"
+    FILE_SHARE      = "file_share"
+    FILE_LIST       = "file_list"
+    FILE_REQUEST    = "file_request"
+    FILE_RESPONSE   = "file_response"
+    EMERGENCY       = "emergency"
+    ERROR           = "error"
+
+# Available alert rooms
+ALERT_ROOMS = ["CPU", "Bandwidth", "Security"]
+
+def setup_logger(name: str, log_file: str = None, level=logging.INFO):
+    """Create and return a logger with console + optional file handler."""
+    import logging
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)-7s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Console handler
+    ch = logging.StreamHandler()
+    ch.setLevel(level)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
+    # File handler (optional)
+    if log_file:
+        fh = logging.FileHandler(log_file, encoding=ENCODING)
+        fh.setLevel(level)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+
+    return logger
+
+def send_msg(sock: socket.socket, payload: dict) -> None:
+    """Serialize payload to JSON, prepend a 4-byte big-endian length prefix, and send."""
+    try:
+        raw = json.dumps(payload, default=str).encode(ENCODING)
+        if len(raw) > MAX_PAYLOAD_SIZE:
+            raise ValueError(f"Payload size {len(raw)} exceeds maximum {MAX_PAYLOAD_SIZE}")
+        header = struct.pack("!I", len(raw))
+        sock.sendall(header + raw)
+    except (BrokenPipeError, ConnectionResetError, OSError) as exc:
+        raise ConnectionError(f"send_msg failed: {exc}") from exc
+
+def recv_msg(sock: socket.socket) -> dict | None:
+    """Read a 4-byte prefix, read exact body bytes, decode JSON and return dict."""
+    try:
+        header_data = _recv_exactly(sock, HEADER_SIZE)
+        if header_data is None:
+            return None  # clean disconnect
+
+        payload_len = struct.unpack("!I", header_data)[0]
+        if payload_len > MAX_PAYLOAD_SIZE:
+            raise ValueError(f"Incoming payload size {payload_len} exceeds maximum {MAX_PAYLOAD_SIZE}")
+
+        body_data = _recv_exactly(sock, payload_len)
+        if body_data is None:
+            return None  # unexpected disconnect mid-message
+
+        return json.loads(body_data.decode(ENCODING))
+
+    except (json.JSONDecodeError, struct.error) as exc:
+        raise ConnectionError(f"recv_msg decode error: {exc}") from exc
+    except (BrokenPipeError, ConnectionResetError, OSError) as exc:
+        raise ConnectionError(f"recv_msg failed: {exc}") from exc
+
+def _recv_exactly(sock: socket.socket, n: int) -> bytes | None:
+    """Read exactly n bytes from socket, handling TCP fragmentation."""
+    buf = bytearray()
+    while len(buf) < n:
+        remaining = n - len(buf)
+        chunk = sock.recv(min(remaining, CHUNK_SIZE))
+        if not chunk:
+            if len(buf) == 0:
+                return None  # clean close
+            raise ConnectionError(f"Connection closed after {len(buf)}/{n} bytes")
+        buf.extend(chunk)
+    return bytes(buf)
+
+def make_error(detail: str) -> dict:
+    """Build an ERROR payload."""
+    return {
+        "type": MsgType.ERROR,
+        "detail": detail,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# SSL/TLS Certificate Generation (formerly generate_certs.py)
+# ---------------------------------------------------------------------------
+
+def generate_certificates(force=False):
+    """Generates self-signed SSL/TLS certificates if they do not exist or if force is True."""
+    if not force and os.path.exists(SERVER_CERT) and os.path.exists(SERVER_KEY):
+        return True
+
+    print("[*] Generating self-signed SSL/TLS certificates...")
+    openssl_path = shutil.which("openssl")
+    days_valid = 365
+    subject = "/C=PK/ST=Punjab/L=Lahore/O=CN-Theory-Project/OU=Dev/CN=localhost"
+
+    if openssl_path:
+        cmd = [
+            openssl_path, "req",
+            "-x509",
+            "-newkey", "rsa:2048",
+            "-keyout", SERVER_KEY,
+            "-out", SERVER_CERT,
+            "-days", str(days_valid),
+            "-nodes",
+            "-subj", subject,
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+            print("[+] Certificates generated using OpenSSL CLI.")
+            return True
+        except Exception as exc:
+            print(f"[!] OpenSSL CLI generation failed: {exc}")
+
+    try:
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        import datetime
+        import ipaddress
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subj = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "PK"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Punjab"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, "Lahore"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "CN-Theory-Project"),
+            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "Dev"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+        ])
+
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subj)
+            .issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime.utcnow())
+            .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=days_valid))
+            .add_extension(
+                x509.SubjectAlternativeName([
+                    x509.DNSName("localhost"),
+                    x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+                ]),
+                critical=False,
+            )
+            .sign(key, hashes.SHA256())
+        )
+
+        with open(SERVER_KEY, "wb") as f:
+            f.write(key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            ))
+
+        with open(SERVER_CERT, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+
+        print("[+] Certificates generated using 'cryptography' library.")
+        return True
+    except ImportError:
+        print("[ERROR] Neither 'openssl' CLI nor the 'cryptography' library is available.")
+        print("        To generate certificates, please install OpenSSL or run: pip install cryptography")
+        return False
+    except Exception as exc:
+        print(f"[ERROR] Cryptography-based generation failed: {exc}")
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Server State
@@ -99,11 +296,9 @@ class Server:
 
         if self.use_ssl:
             if not (os.path.exists(SERVER_CERT) and os.path.exists(SERVER_KEY)):
-                self.logger.error(
-                    "SSL enabled but certificate files not found. "
-                    "Run generate_certs.py first."
-                )
-                sys.exit(1)
+                self.logger.info("SSL enabled but certificates not found. Attempting auto-generation...")
+                generate_certificates(force=False)
+            
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.load_cert_chain(certfile=SERVER_CERT, keyfile=SERVER_KEY)
             self.server_sock = ctx.wrap_socket(raw_sock, server_side=True)
