@@ -354,6 +354,25 @@ class Server:
         client: ClientInfo | None = None
 
         try:
+            # Dynamic TLS/SSL auto-detection
+            sock.settimeout(2.0)
+            try:
+                peek_bytes = sock.recv(4, socket.MSG_PEEK)
+                if len(peek_bytes) >= 2 and peek_bytes[0] == 0x16 and peek_bytes[1] == 0x03:
+                    self.logger.info("Dynamic TLS connection detected from %s:%d. Wrapping socket.", *addr)
+                    if not (os.path.exists(SERVER_CERT) and os.path.exists(SERVER_KEY)):
+                        self.logger.info("SSL enabled but certificates not found. Attempting auto-generation...")
+                        generate_certificates(force=False)
+                    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                    ctx.load_cert_chain(certfile=SERVER_CERT, keyfile=SERVER_KEY)
+                    sock = ctx.wrap_socket(sock, server_side=True)
+            except Exception as e:
+                self.logger.warning("Dynamic SSL detection / handshake failed for %s:%d: %s", addr[0], addr[1], e)
+                sock.close()
+                return
+            finally:
+                sock.settimeout(None)
+
             # ---- Wait for CONNECT message ----
             msg = recv_msg(sock)
             if msg is None or msg.get("type") != MsgType.CONNECT:

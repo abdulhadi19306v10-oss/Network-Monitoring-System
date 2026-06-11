@@ -192,6 +192,7 @@ class BridgeState:
         self.stop_event = threading.Event()
         self.receiver_thread: threading.Thread | None = None
         self.metrics_thread: threading.Thread | None = None
+        self.lock = threading.Lock()
         
         # Simulated metrics (RAM and Temperature added)
         self.metrics = {"cpu": 0.0, "bandwidth_mbps": 0.0, "ram": 0.0, "temp": 0.0, "packet_loss": 0.0}
@@ -374,8 +375,9 @@ def disconnect_from_server(sid, reason="User initiated"):
         state.virtual_nodes_running = False
         if state.sock:
             try:
-                send_msg(state.sock, {"type": MsgType.DISCONNECT})
-                state.sock.close()
+                with state.lock:
+                    send_msg(state.sock, {"type": MsgType.DISCONNECT})
+                    state.sock.close()
             except Exception:
                 pass
         state.sock = None
@@ -386,7 +388,8 @@ def send_msg_safe(state: BridgeState, payload: dict):
     if not state or not state.connected or not state.sock:
         return
     try:
-        send_msg(state.sock, payload)
+        with state.lock:
+            send_msg(state.sock, payload)
     except Exception as e:
         print(f"[TCP Send Error] {e}")
         disconnect_from_server(state.sid, str(e))
