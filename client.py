@@ -22,6 +22,7 @@ import struct
 import sys
 import argparse
 from datetime import datetime
+import psutil
 
 from flask import Flask, send_from_directory
 from flask_socketio import SocketIO
@@ -411,24 +412,58 @@ def receive_loop(state: BridgeState):
         disconnect_from_server(state.sid, "Connection dropped")
 
 def metrics_loop(state: BridgeState):
-    # Pure randomized simulation data as requested (no need to use psutil or shell commands)
-    cpu_usage = 35.0
-    bandwidth = 180.0
-    ram_usage = 45.0
-    temperature = 50.0
+    # Initialize CPU calculation and baseline net I/O counters
+    psutil.cpu_percent(interval=None)
+    last_net = psutil.net_io_counters()
+    last_time = time.time()
 
     while not state.stop_event.is_set():
-        # Random walks to simulate metrics naturally
-        cpu_usage = max(0.0, min(100.0, cpu_usage + random.uniform(-10.0, 10.0)))
-        bandwidth = max(0.0, min(1000.0, bandwidth + random.uniform(-60.0, 60.0)))
-        ram_usage = max(0.0, min(100.0, ram_usage + random.uniform(-5.0, 5.0)))
-        temperature = max(20.0, min(110.0, temperature + random.uniform(-4.0, 4.0)))
+        # Sleep for the interval first, so we measure delta over these 2 seconds
+        time.sleep(2.0)
+        
+        current_time = time.time()
+        current_net = psutil.net_io_counters()
+        
+        time_diff = current_time - last_time
+        if time_diff <= 0:
+            time_diff = 2.0
+            
+        # Get real CPU and RAM percentage
+        cpu_usage = psutil.cpu_percent(interval=None)
+        ram_usage = psutil.virtual_memory().percent
+        
+        # Calculate bandwidth: delta bytes (sent + recv) over interval, converted to Mbps
+        sent_diff = current_net.bytes_sent - last_net.bytes_sent
+        recv_diff = current_net.bytes_recv - last_net.bytes_recv
+        total_bytes_diff = sent_diff + recv_diff
+        bandwidth = (total_bytes_diff * 8) / (1024 * 1024 * time_diff)
+        
+        # Calculate packet loss: delta drops over total packets processed in interval
+        sent_packets_diff = current_net.packets_sent - last_net.packets_sent
+        recv_packets_diff = current_net.packets_recv - last_net.packets_recv
+        total_packets_diff = sent_packets_diff + recv_packets_diff
+        
+        dropin_diff = current_net.dropin - last_net.dropin
+        dropout_diff = current_net.dropout - last_net.dropout
+        total_drops_diff = dropin_diff + dropout_diff
+        
+        if total_packets_diff > 0:
+            packet_loss = (total_drops_diff / (total_packets_diff + total_drops_diff)) * 100.0
+        else:
+            packet_loss = 0.0
+            
+        # Estimate temperature realistically based on CPU load (Windows fallback)
+        temperature = 35.0 + (cpu_usage * 0.4) + random.uniform(-1.0, 1.0)
         
         state.metrics["cpu"] = float(cpu_usage)
         state.metrics["bandwidth_mbps"] = float(bandwidth)
         state.metrics["ram"] = float(ram_usage)
         state.metrics["temp"] = float(temperature)
-        state.metrics["packet_loss"] = float(random.choice([0.0, 0.0, 0.0, 1.0, 2.0]))
+        state.metrics["packet_loss"] = float(packet_loss)
+        
+        # Save baseline for next loop iteration
+        last_net = current_net
+        last_time = current_time
         
         if state.connected:
             send_msg_safe(state, make_status_update(state.username, state.metrics))
@@ -458,8 +493,6 @@ def metrics_loop(state: BridgeState):
                 send_msg_safe(state, make_emergency(state.username, alert_text))
             elif not (cpu_breached or bw_breached or ram_breached or temp_breached) and state.emergency_triggered:
                 state.emergency_triggered = False
-            
-        time.sleep(2.0)
 
 # ---------------------------------------------------------------------------
 # Dynamic Concurrency presentation simulator

@@ -4,6 +4,15 @@ const socket = io();
 let connected = false;
 let myUsername = "";
 
+function escapeHtml(str) {
+    return (str || '').toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 // Initialize Chart.js
 const chartCtx = document.getElementById('metricsChart').getContext('2d');
 const metricsChart = new Chart(chartCtx, {
@@ -167,8 +176,11 @@ socket.on('room_msg', (data) => {
     const box = document.getElementById('box-rooms');
     const msg = document.createElement('div');
     msg.className = data.username === "SERVER" ? "chat-msg server" : "chat-msg";
-    msg.innerHTML = `[${data.room}] <strong>${data.username}:</strong> ${data.text}`;
+    msg.innerHTML = `[${escapeHtml(data.room)}] <strong>${escapeHtml(data.username)}:</strong> ${escapeHtml(data.text)}`;
     box.appendChild(msg);
+    while (box.children.length > 100) {
+        box.removeChild(box.firstChild);
+    }
     box.scrollTop = box.scrollHeight;
 });
 
@@ -176,8 +188,11 @@ socket.on('private_msg', (data) => {
     const box = document.getElementById('box-private');
     const msg = document.createElement('div');
     msg.className = "chat-msg";
-    msg.innerHTML = `<span style="color:var(--accent-purple)">[From ${data.sender}]:</span> ${data.text}`;
+    msg.innerHTML = `<span style="color:var(--accent-purple)">[From ${escapeHtml(data.sender)}]:</span> ${escapeHtml(data.text)}`;
     box.appendChild(msg);
+    while (box.children.length > 100) {
+        box.removeChild(box.firstChild);
+    }
     box.scrollTop = box.scrollHeight;
 });
 
@@ -273,7 +288,12 @@ socket.on('event_log', (data) => {
 function logEvent(tag, text) {
     const box = document.getElementById('box-events');
     const d = new Date().toLocaleTimeString();
-    box.innerHTML += `<div>[${d}] [${tag}] ${text}</div>`;
+    const div = document.createElement('div');
+    div.innerHTML = `[${d}] [${escapeHtml(tag)}] ${escapeHtml(text)}`;
+    box.appendChild(div);
+    while (box.children.length > 100) {
+        box.removeChild(box.firstChild);
+    }
     box.scrollTop = box.scrollHeight;
 }
 
@@ -304,7 +324,13 @@ function sendRoomMsg() {
     
     // Echo locally
     const box = document.getElementById('box-rooms');
-    box.innerHTML += `<div class="chat-msg">[${room}] <strong>Me:</strong> ${inp.value}</div>`;
+    const div = document.createElement('div');
+    div.className = "chat-msg";
+    div.innerHTML = `[${escapeHtml(room)}] <strong>Me:</strong> ${escapeHtml(inp.value)}`;
+    box.appendChild(div);
+    while (box.children.length > 100) {
+        box.removeChild(box.firstChild);
+    }
     box.scrollTop = box.scrollHeight;
     
     inp.value = "";
@@ -319,7 +345,13 @@ function sendPrivateMsg() {
     
     // Echo locally
     const box = document.getElementById('box-private');
-    box.innerHTML += `<div class="chat-msg"><span style="color:var(--accent-purple)">[To ${recipient}]:</span> ${inp.value}</div>`;
+    const div = document.createElement('div');
+    div.className = "chat-msg";
+    div.innerHTML = `<span style="color:var(--accent-purple)">[To ${escapeHtml(recipient)}]:</span> ${escapeHtml(inp.value)}`;
+    box.appendChild(div);
+    while (box.children.length > 100) {
+        box.removeChild(box.firstChild);
+    }
     box.scrollTop = box.scrollHeight;
     
     inp.value = "";

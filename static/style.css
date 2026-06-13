@@ -25,8 +25,8 @@ body {
         radial-gradient(circle at 85% 30%, rgba(192, 132, 252, 0.08) 0%, transparent 50%),
         var(--bg-gradient);
     color: var(--text-primary);
-    min-height: 100vh;
-    overflow-x: hidden;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .container {
@@ -161,6 +161,29 @@ input[type="text"]:focus, select:focus {
     display: flex;
     flex-direction: column;
     gap: 20px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Individual Widget Sizing */
+.metrics-widget {
+    flex-shrink: 0;
+}
+
+.nodes-widget {
+    flex: 1;
+    min-height: 0;
+}
+
+.logs-widget {
+    flex: 1;
+    min-height: 0;
+}
+
+.files-widget {
+    flex: 1;
+    min-height: 0;
 }
 
 /* Widgets */
@@ -219,7 +242,10 @@ input[type="text"]:focus, select:focus {
 .fill-green { background: var(--accent-green); }
 
 /* Chat Boxes */
-.chat-widget { flex-grow: 1; min-height: 250px; }
+.chat-widget {
+    flex: 1;
+    min-height: 0;
+}
 .chat-box {
     flex-grow: 1;
     background: rgba(0, 0, 0, 0.45);
@@ -231,6 +257,7 @@ input[type="text"]:focus, select:focus {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    min-height: 0;
 }
 
 .chat-box.terminal {
@@ -446,4 +473,23 @@ input[type="text"]:focus, select:focus {
 .btn.simulation.running:hover {
     background: var(--accent-red);
     color: #000;
+}
+
+/* Custom Thin Scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
