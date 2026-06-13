@@ -205,7 +205,7 @@ class BridgeState:
         
         # Alert thresholds config
         self.threshold_cpu = 90.0
-        self.threshold_bw = 900.0
+        self.threshold_bw = 30.0
 
 active_sessions = {}
 sessions_lock = threading.Lock()
