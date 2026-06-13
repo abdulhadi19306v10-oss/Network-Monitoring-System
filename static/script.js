@@ -116,6 +116,9 @@ socket.on('bridge_connected', (data) => {
     // Show simulation button
     document.getElementById('btn-simulate').style.display = "inline-block";
     
+    // Sync current UI thresholds to client
+    onThresholdChange();
+    
     logEvent("System", `Successfully bridged to server at ${data.host}:${data.port}`);
 });
 
@@ -144,13 +147,19 @@ socket.on('bridge_disconnected', (data) => {
     logEvent("System", `Disconnected: ${data.reason}`);
 });
 
+let nodeMetricsMap = {};
+let activeClients = [];
+
 socket.on('client_list', (data) => {
     const list = document.getElementById('list-nodes');
     const select = document.getElementById('sel-private');
     list.innerHTML = "";
     select.innerHTML = "";
     
-    data.clients.forEach(c => {
+    activeClients = data.clients || [];
+    document.getElementById('nodes-count-badge').innerText = activeClients.length;
+    
+    activeClients.forEach(c => {
         const li = document.createElement('li');
         li.innerHTML = `<span>${c.username}</span> <span style="color:var(--text-secondary); font-size:12px">${c.ip}</span>`;
         list.appendChild(li);
@@ -162,6 +171,13 @@ socket.on('client_list', (data) => {
             select.appendChild(opt);
         }
     });
+    
+    drawTopology();
+});
+
+socket.on('node_metrics_update', (data) => {
+    nodeMetricsMap[data.username] = data.metrics;
+    drawTopology();
 });
 
 socket.on('metrics_update', (data) => {
@@ -170,6 +186,12 @@ socket.on('metrics_update', (data) => {
     document.getElementById('val-bw').innerText = data.bandwidth_mbps.toFixed(1) + " Mbps";
     
     updateChart(data.cpu, data.bandwidth_mbps);
+    
+    // Also store locally for topology visualizer
+    if (myUsername) {
+        nodeMetricsMap[myUsername] = data;
+        drawTopology();
+    }
 });
 
 socket.on('room_msg', (data) => {
@@ -426,3 +448,132 @@ socket.on('simulation_state', (data) => {
         btn.className = "btn simulation";
     }
 });
+
+// -----------------------------------------------------------------------------
+// Threshold Settings Panel & SVG Topology Renderer
+// -----------------------------------------------------------------------------
+
+function toggleThresholdPanel() {
+    const panel = document.getElementById('threshold-slider-panel');
+    panel.classList.toggle('hidden');
+}
+
+function onThresholdChange() {
+    const cpuThresh = document.getElementById('slider-cpu-thresh').value;
+    const bwThresh = document.getElementById('slider-bw-thresh').value;
+    
+    document.getElementById('label-cpu-thresh').innerText = cpuThresh;
+    document.getElementById('label-bw-thresh').innerText = bwThresh;
+    
+    if (connected) {
+        socket.emit('set_thresholds', {
+            cpu: parseFloat(cpuThresh),
+            bandwidth: parseFloat(bwThresh)
+        });
+    }
+}
+
+function drawTopology() {
+    const svg = document.getElementById('topology-svg');
+    if (!svg) return;
+    svg.innerHTML = ''; // Clear SVG canvas
+    
+    const cx = 150;
+    const cy = 100;
+    
+    const clientNodes = activeClients.filter(c => c.username !== 'SERVER');
+    const total = clientNodes.length;
+    
+    // 1. Draw Connection Links first
+    let index = 0;
+    clientNodes.forEach(client => {
+        const angle = (index / total) * 2 * Math.PI;
+        const radius = 60;
+        const nx = cx + radius * Math.cos(angle);
+        const ny = cy + radius * Math.sin(angle);
+        
+        const metrics = nodeMetricsMap[client.username] || { cpu: 0.0 };
+        const cpu = metrics.cpu || 0.0;
+        
+        let linkClass = 'topo-link active';
+        if (cpu > parseFloat(document.getElementById('slider-cpu-thresh').value)) {
+            linkClass = 'topo-link critical';
+        } else if (cpu > parseFloat(document.getElementById('slider-cpu-thresh').value) - 10.0) {
+            linkClass = 'topo-link warning';
+        }
+        
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', cx);
+        line.setAttribute('y1', cy);
+        line.setAttribute('x2', nx);
+        line.setAttribute('y2', ny);
+        line.setAttribute('class', linkClass);
+        svg.appendChild(line);
+        
+        index++;
+    });
+    
+    // 2. Draw Node Circles and labels
+    index = 0;
+    clientNodes.forEach(client => {
+        const angle = (index / total) * 2 * Math.PI;
+        const radius = 60;
+        const nx = cx + radius * Math.cos(angle);
+        const ny = cy + radius * Math.sin(angle);
+        
+        const metrics = nodeMetricsMap[client.username] || { cpu: 0.0 };
+        const cpu = metrics.cpu || 0.0;
+        
+        const limitCpu = parseFloat(document.getElementById('slider-cpu-thresh').value);
+        let fill = '#34d399'; // Normal
+        if (cpu > limitCpu) {
+            fill = '#fb7185'; // Critical (accent-red)
+        } else if (cpu > limitCpu - 10.0) {
+            fill = '#fbbf24'; // Warning (amber)
+        }
+        
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'topo-node');
+        
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', nx);
+        circle.setAttribute('cy', ny);
+        circle.setAttribute('r', '7');
+        circle.setAttribute('fill', fill);
+        g.appendChild(circle);
+        
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', nx);
+        text.setAttribute('y', ny - 10);
+        
+        let displayName = client.username;
+        if (displayName.length > 8) displayName = displayName.slice(0, 6) + '..';
+        text.textContent = displayName;
+        g.appendChild(text);
+        
+        svg.appendChild(g);
+        index++;
+    });
+    
+    // 3. Draw Central Server Node (drawn on top)
+    const serverG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    serverG.setAttribute('class', 'topo-node server');
+    
+    const serverCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    serverCircle.setAttribute('cx', cx);
+    serverCircle.setAttribute('cy', cy);
+    serverCircle.setAttribute('r', '11');
+    serverCircle.setAttribute('fill', '#38bdf8'); // Server Hub Blue
+    serverCircle.setAttribute('style', 'filter: drop-shadow(0px 0px 6px rgba(56, 189, 248, 0.5));');
+    serverG.appendChild(serverCircle);
+    
+    const serverText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    serverText.setAttribute('x', cx);
+    serverText.setAttribute('y', cy + 3);
+    serverText.setAttribute('fill', '#070913');
+    serverText.setAttribute('style', 'font-size: 7px; fill: #070913; font-weight: 800;');
+    serverText.textContent = 'HUB';
+    serverG.appendChild(serverText);
+    
+    svg.appendChild(serverG);
+}

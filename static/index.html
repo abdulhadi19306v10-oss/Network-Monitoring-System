@@ -52,12 +52,33 @@
                     <div class="chart-container">
                         <canvas id="metricsChart"></canvas>
                     </div>
+                    
+                    <!-- Collapsible Threshold Settings -->
+                    <div class="threshold-panel-container mt-10">
+                        <button class="threshold-toggle-btn" onclick="toggleThresholdPanel()">⚙️ Alert Threshold Settings</button>
+                        <div id="threshold-slider-panel" class="threshold-slider-panel hidden">
+                            <div class="slider-group">
+                                <label>CPU Alert (> <span id="label-cpu-thresh">90</span>%):</label>
+                                <input type="range" id="slider-cpu-thresh" min="10" max="100" value="90" oninput="onThresholdChange()">
+                            </div>
+                            <div class="slider-group">
+                                <label>Bandwidth Alert (> <span id="label-bw-thresh">900</span> Mbps):</label>
+                                <input type="range" id="slider-bw-thresh" min="50" max="1000" step="50" value="900" oninput="onThresholdChange()">
+                            </div>
+                        </div>
+                    </div>
+
                     <button class="btn danger full-width mt-10" onclick="triggerEmergency()">Trigger Global Emergency</button>
                 </section>
 
                 <!-- Active Nodes Widget -->
                 <section class="glass-panel widget nodes-widget">
-                    <h3>Active Nodes</h3>
+                    <h3>Active Nodes <span id="nodes-count-badge" class="badge">0</span></h3>
+                    <div class="topology-container">
+                        <svg id="topology-svg" viewBox="0 0 300 200">
+                            <!-- Dynamic network topology rendered here -->
+                        </svg>
+                    </div>
                     <ul id="list-nodes" class="node-list">
                         <!-- Nodes populated here -->
                     </ul>

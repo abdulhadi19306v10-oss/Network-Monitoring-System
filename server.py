@@ -283,6 +283,67 @@ class Server:
         )
         self.running = False
 
+        # SQLite Database initialization
+        self.db_path = os.path.join(CERT_DIR, "server_db.sqlite")
+        self._init_db()
+        self._load_data_from_db()
+
+    def _init_db(self):
+        """Create database tables if they do not exist."""
+        import sqlite3
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS shared_files (
+                    filename TEXT PRIMARY KEY,
+                    username TEXT,
+                    file_size INTEGER,
+                    file_type TEXT,
+                    file_data TEXT,
+                    timestamp TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS emergency_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT,
+                    message TEXT,
+                    timestamp TEXT
+                )
+            """)
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self.logger.error("Failed to initialize SQLite database: %s", e)
+
+    def _load_data_from_db(self):
+        """Load persistent shared files from database on startup."""
+        import sqlite3
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT filename, username, file_size, file_type, timestamp FROM shared_files")
+            rows = cursor.fetchall()
+            for row in rows:
+                self.shared_files.append({
+                    "filename": row[0],
+                    "username": row[1],
+                    "file_size": row[2],
+                    "file_type": row[3],
+                    "timestamp": row[4],
+                })
+            
+            cursor.execute("SELECT filename, file_data FROM shared_files")
+            data_rows = cursor.fetchall()
+            for row in data_rows:
+                self.file_data_store[row[0]] = row[1]
+                
+            conn.close()
+            self.logger.info("Loaded %d shared files from SQLite database.", len(self.shared_files))
+        except Exception as e:
+            self.logger.error("Failed to load data from SQLite database: %s", e)
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -564,8 +625,27 @@ class Server:
         }
 
         with self.files_lock:
-            self.shared_files.append(file_entry)
+            # Check if file already exists in metadata cache, update it
+            existing_idx = next((i for i, f in enumerate(self.shared_files) if f["filename"] == filename), None)
+            if existing_idx is not None:
+                self.shared_files[existing_idx] = file_entry
+            else:
+                self.shared_files.append(file_entry)
             self.file_data_store[filename] = file_data
+
+            # Save to SQLite database persistently
+            try:
+                import sqlite3
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO shared_files (filename, username, file_size, file_type, file_data, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (filename, client.username, file_size, file_type, file_data, file_entry["timestamp"]))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                self.logger.error("Failed to persist shared file into database: %s", e)
 
         self.logger.info(
             "File shared by %s: %s (%d bytes)", client.username, filename, file_size
@@ -616,10 +696,25 @@ class Server:
         })
 
     def _handle_emergency(self, client: ClientInfo, msg: dict):
-        """Broadcast an emergency alert to ALL connected clients."""
+        """Broadcast an emergency alert to ALL connected clients and save to DB."""
         self.logger.warning(
             "EMERGENCY from %s: %s", client.username, msg.get("message", "")
         )
+        
+        # Save to SQLite database persistently
+        try:
+            import sqlite3
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO emergency_logs (username, message, timestamp)
+                VALUES (?, ?, ?)
+            """, (client.username, msg.get("message", ""), datetime.now().isoformat()))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self.logger.error("Failed to persist emergency alert into database: %s", e)
+            
         # Send to everyone including the sender (for confirmation)
         self._broadcast(msg)
 
@@ -1241,6 +1336,24 @@ def run_flask_dashboard(server_instance, port):
                 logs = [f"Failed to read server logs: {e}"]
         else:
             logs = ["Log file does not exist yet."]
+
+        # Read emergency logs from SQLite to display in the dashboard logs if they exist
+        db_emergencies = []
+        try:
+            import sqlite3
+            if os.path.exists(server_instance.db_path):
+                conn = sqlite3.connect(server_instance.db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT username, message, timestamp FROM emergency_logs ORDER BY id DESC LIMIT 10")
+                rows = cursor.fetchall()
+                for r in rows:
+                    db_emergencies.append(f"[{r[2]}] [EMERGENCY] {r[0]}: {r[1]}")
+                conn.close()
+        except Exception:
+            pass
+
+        # Prepend DB emergencies to log listing for display
+        logs = db_emergencies + logs
 
         return jsonify({
             "host": server_instance.host,

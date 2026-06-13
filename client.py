@@ -202,6 +202,10 @@ class BridgeState:
         # Virtual node simulation control
         self.virtual_nodes_running = False
         self.virtual_stop_event: threading.Event | None = None
+        
+        # Alert thresholds config
+        self.threshold_cpu = 90.0
+        self.threshold_bw = 900.0
 
 active_sessions = {}
 sessions_lock = threading.Lock()
@@ -359,6 +363,15 @@ def handle_trigger_emergency(data):
         return
     send_msg_safe(state, make_emergency(state.username, data.get("message")))
 
+@socketio.on('set_thresholds')
+def handle_set_thresholds(data):
+    state = get_session_state()
+    if not state:
+        return
+    state.threshold_cpu = float(data.get("cpu", 90.0))
+    state.threshold_bw = float(data.get("bandwidth", 900.0))
+    print(f"[Flask] Set alert thresholds for sid={state.sid}: CPU={state.threshold_cpu}%, Bandwidth={state.threshold_bw} Mbps")
+
 
 # ---------------------------------------------------------------------------
 # Raw TCP Handlers & Background Threads (Python Bridge -> Main Server)
@@ -470,8 +483,8 @@ def metrics_loop(state: BridgeState):
             socketio.emit('metrics_update', state.metrics, room=state.sid)
             
             # Alerts verification (CPU, Bandwidth, RAM, Temperature)
-            cpu_breached = state.metrics["cpu"] > 90.0
-            bw_breached = state.metrics["bandwidth_mbps"] > 900.0
+            cpu_breached = state.metrics["cpu"] > state.threshold_cpu
+            bw_breached = state.metrics["bandwidth_mbps"] > state.threshold_bw
             ram_breached = state.metrics["ram"] > 90.0
             temp_breached = state.metrics["temp"] > 80.0
             

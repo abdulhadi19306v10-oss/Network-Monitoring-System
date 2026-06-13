@@ -493,3 +493,175 @@ input[type="text"]:focus, select:focus {
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
 }
+
+/* Alert Thresholds Slider Panel */
+.threshold-panel-container {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.threshold-toggle-btn {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.03);
+    border: none;
+    color: var(--text-secondary);
+    padding: 8px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.threshold-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.threshold-slider-panel {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
+    animation: slideDown 0.3s ease-out;
+}
+
+.threshold-slider-panel.hidden {
+    display: none;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.slider-group label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.slider-group input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    outline: none;
+}
+
+.slider-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    cursor: pointer;
+    transition: transform 0.1s ease;
+}
+
+.slider-group input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.3);
+}
+
+/* Network Topology Widget Styling */
+.topology-container {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 10px;
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#topology-svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Topology Nodes & Connections */
+.topo-link {
+    stroke: rgba(255, 255, 255, 0.12);
+    stroke-width: 1.5;
+    stroke-dasharray: 4, 4;
+    animation: flowData 4s linear infinite;
+}
+
+.topo-link.active {
+    stroke: rgba(56, 189, 248, 0.3);
+    animation: flowData 2s linear infinite;
+}
+
+.topo-link.warning {
+    stroke: rgba(245, 158, 11, 0.4);
+    animation: flowData 1.5s linear infinite;
+}
+
+.topo-link.critical {
+    stroke: rgba(251, 113, 133, 0.5);
+    animation: flowData 0.8s linear infinite;
+}
+
+@keyframes flowData {
+    to { stroke-dashoffset: -20; }
+}
+
+.topo-node {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.topo-node circle {
+    stroke: #070913;
+    stroke-width: 2.5;
+    transition: fill 0.3s ease, r 0.3s ease;
+}
+
+.topo-node:hover circle {
+    r: 9;
+    stroke-width: 3.5;
+}
+
+.topo-node.server:hover circle {
+    r: 15;
+}
+
+.topo-node text {
+    fill: var(--text-primary);
+    font-size: 8px;
+    font-weight: 600;
+    text-anchor: middle;
+    pointer-events: none;
+    font-family: inherit;
+}
+
+.badge {
+    background: rgba(56, 189, 248, 0.15);
+    border: 1px solid var(--accent-blue);
+    color: var(--accent-blue);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 6px;
+    display: inline-block;
+}

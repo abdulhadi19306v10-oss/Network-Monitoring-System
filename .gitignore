@@ -3,3 +3,4 @@ __pycache__/
 *.crt
 *.key
 server_logs.txt
+*.sqlite
