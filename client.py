@@ -412,8 +412,7 @@ def receive_loop(state: BridgeState):
         disconnect_from_server(state.sid, "Connection dropped")
 
 def metrics_loop(state: BridgeState):
-    # Initialize CPU calculation and baseline net I/O counters
-    psutil.cpu_percent(interval=None)
+    # Initialize baseline net I/O counters
     last_net = psutil.net_io_counters()
     last_time = time.time()
 
@@ -428,8 +427,8 @@ def metrics_loop(state: BridgeState):
         if time_diff <= 0:
             time_diff = 2.0
             
-        # Get real CPU and RAM percentage
-        cpu_usage = psutil.cpu_percent(interval=None)
+        # Get real CPU and RAM percentage (interval=0.1 blocks for 0.1s for thread-safe accurate usage)
+        cpu_usage = psutil.cpu_percent(interval=0.1)
         ram_usage = psutil.virtual_memory().percent
         
         # Calculate bandwidth: delta bytes (sent + recv) over interval, converted to Mbps
