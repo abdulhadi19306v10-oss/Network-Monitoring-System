@@ -24,14 +24,18 @@ This project was developed for the **Computer Networks Lab Course** at the **Uni
 
 ## 🌟 Key Features
 
-1.  **Real-Time Telemetry & Monitoring:** Broadcasts and tracks live node metrics including CPU utilization, bandwidth consumption, RAM usage, temperature, and packet loss.
-2.  **Topic-Based Alert Rooms:** Pub/sub channels (`CPU`, `Bandwidth`, `Security`) allow administrators to filter notifications according to their area of responsibility without background noise.
-3.  **Global Emergency Broadcasts:** Automatically triggers a full-screen, non-dismissible red overlay alert on all active dashboards when server metrics exceed critical thresholds (e.g., CPU > 90%, Temp > 80°C).
-4.  **Private Direct Messaging:** Inter-operator private chat for direct escalation and collaborative debugging.
-5.  **Evidence & File Sharing:** Secure file transfer mechanism to share logs and screenshots across nodes using Base64-encoded payloads over TCP.
-6.  **TLS/SSL Encryption:** Built-in capability for secure encrypted communications (using standard TLS/SSL sockets) with auto-generating self-signed certificates.
-7.  **Dynamic Concurrency Simulator:** Spawns multiple mock nodes (Alice, Bob, Carol) to test server synchronization and message load handling.
-8.  **Automated Integration Test Suite:** Dedicated test runner validating all protocol types (multi-client handshake, discovery, messaging, file sharing, and emergencies).
+1.  **Real-Time System Telemetry (`psutil`):** Captures and transmits real system metrics (CPU utilization, RAM consumption, packet loss rate, and bandwidth) from the host machine using `psutil` instead of generic simulated random walks.
+2.  **Interactive SVG Network Topology Visualizer:** Displays a vector-based graph showing connection links between nodes and the central Server Hub. Connections animate to represent flow activity, and circles dynamically transition colors (Green/Amber/Red) to reflect warning and critical CPU loads.
+3.  **Customizable Threshold Sliders:** Introduces a collapsible UI settings panel allowing operators to dynamically slide warning and critical thresholds (CPU warning limits and Bandwidth constraints from `0-50 Mbps` with `30 Mbps` warning baseline) which are synced immediately to the client bridge process.
+4.  **Persistent SQLite Database Storage:** Features an SQLite database (`server_db.sqlite`) running on the server to store shared file metadata/payloads and emergency logs persistently.
+5.  **DOM Tree Memory Optimization:** Fixes scroll bugs and prevents long-running browser tab bloat by limiting all chat widgets and console logs to the latest 100 entries.
+6.  **Topic-Based Alert Rooms:** Pub/sub channels (`CPU`, `Bandwidth`, `Security`) allow administrators to filter notifications according to their area of responsibility without background noise.
+7.  **Global Emergency Broadcasts:** Automatically triggers a full-screen, non-dismissible red overlay alert on all active dashboards when metrics exceed the slider-configured warning limits.
+8.  **Private Direct Messaging:** Inter-operator private chat for direct escalation and collaborative debugging.
+9.  **Evidence & File Sharing:** Secure file transfer mechanism to share logs and screenshots across nodes using Base64-encoded payloads over TCP.
+10. **TLS/SSL Encryption:** Built-in capability for secure encrypted communications (using standard TLS/SSL sockets) with auto-generating self-signed certificates.
+11. **Dynamic Concurrency Simulator:** Spawns multiple mock nodes (Alice, Bob, Carol) to test server synchronization and message load handling.
+12. **Automated Integration Test Suite:** Dedicated test runner validating all protocol types (multi-client handshake, discovery, messaging, file sharing, and emergencies).
 
 ---
 
